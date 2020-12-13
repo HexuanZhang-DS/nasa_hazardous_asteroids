@@ -1,0 +1,1708 @@
+---
+always_allow_html: true
+output:
+  md_document:
+    variant: markdown_github
+---
+
+![Asteroids comparison](image/Asteroid_Comparison_metaball_Featured.jpg){width=100%}
+Asteroids Comparison Metaball Featured (sourse: https://warpgatenews.com/metaballstudios-asteroid-comparison-video/)
+
+
+# NASA Hazardous Asteroids Prediction
+
+# Introduction
+
+There are few things more interesting and mysterious than space. The vastness and
+largely unknown space have given rise to many stories including Star Wars and Star
+Trek. While we may not have to deal with an extraterrestrial siege in the near future,
+there are very real dangers in our solar system in the shape of asteroids. According to
+Danica Remy, president of the B612 Foundation, a nonprofit organization in Mill Valley,
+“It’s 100 percent certain that we’re going to get hit, but we’re not 100 percent certain
+when" (Harper, 2018). With this threat looming it only seems responsible to monitor all
+objects heading for earth and classify the ones that pose a real threat to us. Fortunately, NASA has been keeping a watchful eye on everything with a trajectory towards Earth and has used this data to classify if an object is hazardous or not.
+
+
+The goal of this project is to use historical data of the characteristics of asteroids and create models to accurately classify whether other asteroids are hazardous based on
+their characteristics. There has been extensive research about the threat of asteroids to
+Earth but there is less literature regarding the specific qualities of those asteroids that are considered hazardous. I'm interested in the question: What aspects of an
+asteroid’s characteristics determine whether it is hazardous to Earth? To answer this
+question, I used data from Kaggle (https://www.kaggle.com/shrutimehta/nasa-asteroids-classification).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, 
+                      comment = "")
+```
+
+
+# Load the data
+```{r}
+library(data.table)
+nasa <- fread("data/nasa.csv")
+```
+
+
+```{r}
+#review the data
+library(tidyverse)
+
+summary(nasa)
+glimpse(nasa)
+count(nasa)
+```
+
+# Data Cleaning
+```{r}
+#replace all white spaces in names with _
+names(nasa)<- gsub("\\s","_",names(nasa))
+
+
+nasa<- as.data.frame(nasa)
+checkvars <- c('Orbiting_Body','Equinox', 'Orbit_ID', 'Close_Approach_Date', 'Epoch_Date_Close_Approach','Orbit_Determination_Date')
+
+head(nasa[checkvars], 50)
+table(nasa$Orbiting_Body)
+table(nasa$Equinox)
+
+```
+```{r}
+#Take out variables not usable
+
+mydata <- nasa %>% 
+  select(-c("Name","Orbiting_Body", "Equinox", "Orbit_ID", "Close_Approach_Date", "Epoch_Date_Close_Approach", 
+              "Orbit_Determination_Date"))
+
+```
+
+
+```{r}
+#Change response variable to 0 or 1 
+mydata <- mydata %>% 
+  mutate(Hazardous = ifelse(Hazardous == TRUE, 1, 0))
+
+table(nasa$Hazardous)
+table(mydata$Hazardous)
+```
+
+```{r}
+#check missing values
+anyNA(mydata)       
+```
+```{r}
+#summary statistics:
+psych::describe(mydata)
+
+corrplot::corrplot.mixed(cor(mydata [, 2:ncol(mydata)]))
+```
+```{r}
+#some variables are the same but in different units
+#EST_Dia series and Miss_Dist. Series, relative_velocity series
+cor(mydata$Relative_Velocity_km_per_hr, mydata$Miles_per_hour)
+#relative velocity km per hour is also perfectly correlated with miles per hour. So they measure the same thing
+#We will choose only one of them
+cor(mydata$`Est_Dia_in_KM(min)`, mydata$`Est_Dia_in_KM(max)`)
+
+
+mydata <- as.data.table(mydata)[, c('Est_Dia_in_M(min)', 'Est_Dia_in_M(max)', 'Est_Dia_in_Miles(min)', 'Est_Dia_in_Miles(max)',
+                     'Est_Dia_in_Feet(min)', 'Est_Dia_in_Feet(max)', 'Miss_Dist.(Astronomical)', 'Miss_Dist.(lunar)',
+                     'Miss_Dist.(miles)', 'Relative_Velocity_km_per_sec','Miles_per_hour'):=NULL]
+#remove the () in column names
+mydata <- mydata %>% 
+  rename( Est_Dia_in_KM_Min = `Est_Dia_in_KM(min)`, 
+          Est_Dia_in_KM_Max = `Est_Dia_in_KM(max)`, 
+          Miss_Dist_KM = `Miss_Dist.(kilometers)`)
+
+```
+
+```{r, fig.width=14, fig.height=12}
+#updated correlation plot with usable data
+library(PerformanceAnalytics)
+chart.Correlation(mydata[,2:ncol(mydata)], histogram = TRUE,  method = c("pearson"))
+
+summary(mydata)
+psych::describe(mydata)
+
+```
+
+
+# Data visualization
+```{r}
+ggplot(mydata, aes(x = Absolute_Magnitude, fill = as.factor(Hazardous))) + # Set x and y aesthetics
+  geom_density(alpha = 0.3) + # Set geom density for density plot
+  theme_bw() + # Set theme bw
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(x = "Absolute Magnitude",  # Set plot labels
+       fill = "Hazardous",
+       title = "Absolute Magnitude vs. Hazardous") +
+  scale_fill_manual(values = c("1" = "red", "0" = "blue"), # Manually set fill values
+                    labels = c("1" = "Hazardous", "0" = "Non-Hazardous"))
+```
+```{r}
+ggplot(mydata, aes(x = Mean_Anomaly, fill = as.factor(Hazardous))) + # Set x and y aesthetics
+  geom_density(alpha = 0.3) + # Set geom density for density plot
+  theme_bw() + # Set theme bw
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(x = "Mean Anomaly",  # Set plot labels
+       fill = "Hazardous",
+       title = "Mean Anomaly vs. Hazardous") +
+  scale_fill_manual(values = c("1" = "red", "0" = "blue"), # Manually set fill values
+                    labels = c("1" = "Hazardous", "0" = "Non-Hazardous"))
+```
+```{r}
+mydata %>% 
+  filter(Est_Dia_in_KM_Max <=4) %>% 
+ggplot(aes(x = Est_Dia_in_KM_Max, fill = as.factor(Hazardous))) + # Set x and y aesthetics
+  geom_density(alpha = 0.3) + # Set geom density for density plot
+  theme_bw() + # Set theme bw
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(x = "Estimated Diameter in KM (Max)",  # Set plot labels
+       fill = "Hazardous",
+       title = "Estimated Diameter in KM (Max) vs. Hazardous") +
+  scale_fill_manual(values = c("1" = "red", "0" = "blue"), # Manually set fill values
+                    labels = c("1" = "Hazardous", "0" = "Non-Hazardous"))
+
+```
+```{r}
+ggplot(mydata, aes(x = Minimum_Orbit_Intersection, fill = as.factor(Hazardous))) + # Set x and y aesthetics
+  geom_density(alpha = 0.3) + # Set geom density for density plot
+  theme_bw() + # Set theme bw
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(x = "Minimum Orbit Intersection",  # Set plot labels
+       fill = "Hazardous",
+       title = "Minimum Orbit Intersection vs. Hazardous") +
+  scale_fill_manual(values = c("1" = "red", "0" = "blue"), # Manually set fill values
+                    labels = c("1" = "Hazardous", "0" = "Non-Hazardous"))
+```
+```{r}
+ggplot(mydata, aes(x = Orbit_Uncertainity, fill = as.factor(Hazardous))) + # Set x and y aesthetics
+  geom_density(alpha = 0.3) + # Set geom density for density plot
+  theme_bw() + # Set theme bw
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(x = "Orbit Uncertainty",  # Set plot labels
+       fill = "Hazardous",
+       title = "Orbit Uncertainty vs. Hazardous") +
+  scale_fill_manual(values = c("1" = "red", "0" = "blue"), # Manually set fill values
+                    labels = c("1" = "Hazardous", "0" = "Non-Hazardous"))
+
+```
+
+
+```{r}
+ggplot(data = mydata, aes(x =  Absolute_Magnitude, y = Minimum_Orbit_Intersection)) + 
+  geom_point(aes(color=as.factor(Hazardous)), alpha=0.3) + 
+  theme_bw() + # Set theme bw
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank())+
+  labs(x = "Absolute Magnitude",  # Set plot labels
+       y = "Minimum Orbit Intersection",
+       title = "Absolute Magnitude vs. Minimum Orbit Intersection by Hazardous",
+       color ="Hazardous") +
+  scale_color_manual(values = c("1" = "indianred1", "0" = "cadetblue1"),
+    labels = c('1' = "Hazardous", '0' = "Non-Hazardous"))
+```
+
+
+# Split taining and testing data
+```{r}
+library(splitstackshape) # Used for stratified sampling
+
+ set.seed(123456) # Set seed
+# Perform stratified sampling
+ split_dat <- stratified(mydata[,2:ncol(mydata)], group = "Hazardous", size = 0.2, bothSets = TRUE )
+ # Extract train data
+ train_data <- split_dat[[2]]
+ # Extract test data
+ test_data <- split_dat[[1]]
+
+
+nrow(train_data)
+nrow(test_data)
+
+summary(train_data)
+table(train_data$Hazardous)
+table(test_data$Hazardous)
+```
+
+
+
+# Logistic Regression
+
+In order to make the logistic regression comparable with other models, we use the training data to fit the model
+
+```{r}
+log_mod <- glm(Hazardous ~ ., # Set formula
+             family=binomial(link='logit'),
+             data=train_data)
+summary(log_mod) # Summarize model
+
+```
+
+# Lasso Logistic Regression
+```{r}
+# scale the data
+scale_data <- train_data [,1:20]  #take out the dependent variable
+scale_data <- as.data.frame(scale(scale_data))
+scale_data$Hazardous <- train_data$Hazardous
+```
+
+
+## Find the lambda
+```{r}
+library(glmnet) # Load glmnet
+library(plotmo) # for plot_glmnet
+
+# Create x variables
+x_vars <- model.matrix(Hazardous ~., 
+                       scale_data)[,-1]
+
+# Fit lasso model
+lasso_fit <- glmnet(x = x_vars, # Set explantory variables
+                    y = scale_data$Hazardous, # Set response variable
+                    alpha = 1, # Set alpha value
+                    family = "binomial")
+plot_glmnet(lasso_fit, # Plot lasso coefficients by lambda
+            xvar = "lambda")
+
+```
+```{r}
+coef(lasso_fit)
+```
+```{r}
+set.seed(12345)
+# Set sequence of lambda values
+lambda_seq <- 10^seq(4, -4, by = -.1)
+# Fit cross-validated lasso model
+cv.lasso <- cv.glmnet(x = x_vars, # Set x variables
+                 y = scale_data$Hazardous, # Set response variables
+                 alpha = 1, # Set alpha = 1 for lasso
+                 family = "binomial", # Set family as binomial for logistic regression
+                 lambda = lambda_seq, # Set lambda values to try
+                 nfolds = 10)
+best_lam <- cv.lasso$lambda.min # Extract best lambda
+best_lam  # Print best lambda TOO SMALL
+```
+## Use the best lambda for lasso fit
+```{r}
+lasso_fit2 <- glmnet(x = x_vars, # Set explantory variables
+                    y = scale_data$Hazardous, # Set response variable
+                    alpha = 1, # Set alpha as 1 for lasso
+                    family = "binomial", # Set as logistic regression
+                    lambda = best_lam) # Set lambda as best lambda
+
+temp <- cbind.data.frame(coef(log_mod), as.vector(coef(lasso_fit2))) # Join Coefficients from models
+names(temp) <- c("logisitic Regression", "Logistic Lasso") # Name coefficient columns
+rownames(temp) <- names(coef(log_mod)) # Add rownames to coefficients
+temp # Print coefficients
+```
+
+
+```{r}
+temp<- as.data.frame(temp)
+
+newvars <- rownames(temp[temp$`Logistic Lasso` != 0,])[-1]
+
+log_mod2 <- glm(as.formula(paste("Hazardous~", paste(newvars, collapse =  "+"))), # Set formula
+             family=binomial(link='logit'),
+             data=train_data)
+summary(log_mod2) # Sumamrize model
+
+summary(log_mod)
+```
+
+AIC is higher with the best_lambda. Lambda is too large. 
+
+Use a larger lambda
+```{r}
+lasso_fit3 <- glmnet(x = x_vars, # Set explantory variables
+                    y = scale_data$Hazardous, # Set response variable
+                    alpha = 1, # Set alpha as 1 for lasso
+                    family = "binomial", # Set as logistic regression
+                    lambda = 0.002) # set lambda
+
+temp <- cbind.data.frame(coef(log_mod), as.vector(coef(lasso_fit3))) # Join Coefficients from models
+names(temp) <- c("logisitic Regression", "Logistic Lasso") # Name coefficient columns
+rownames(temp) <- names(coef(log_mod)) # Add rownames to coefficients
+temp # Print coefficients
+```
+
+Use selected features to fit the logistic model
+```{r}
+temp<- as.data.frame(temp)
+
+newvars <- rownames(temp[temp$`Logistic Lasso` != 0,])[-1]
+
+log_mod_final <- glm(as.formula(paste("Hazardous~", paste(newvars, collapse =  "+"))), # Set formula
+             family=binomial(link='logit'),
+             data=train_data)
+summary(log_mod_final) # Summarize model
+
+summary(log_mod)
+
+```
+
+Lambda = 0.002, the AIC is 801.89, lower than original model 805.4 
+
+## Check the confusion matrix
+```{r}
+library(caret)
+log_preds <- predict(log_mod_final, test_data, type = "response") # Create predictions for random forest model
+
+# Convert predictions to classes, using 0.5
+log_pred_class <- rep(0, length(log_preds))
+log_pred_class[log_preds >= 0.5] <- 1
+
+t <- table(log_pred_class, test_data$Hazardous) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+
+```
+cut-off point of 0.5 results in 0.9637 accuracy and only 0.8609 sensitivity. 
+
+Find the optimal cut-off point
+```{r}
+#install.packages("OptimalCutpoints")
+library(OptimalCutpoints)
+
+log_preds_1 <- predict(log_mod_final, train_data, type = "response") 
+
+pred_dat <- cbind.data.frame(log_preds_1, train_data$Hazardous)
+names(pred_dat) <- c("predictions", "response")
+oc<- optimal.cutpoints(X = "predictions",
+                       status = "response",
+                       tag.healthy = 0,
+                       data = pred_dat,
+                       methods = "MaxEfficiency")
+
+# Convert predictions to classes, using optimal cut point
+log_pred_class <- rep(0, length(log_preds))
+log_pred_class[log_preds >= oc$MaxEfficiency$Global$optimal.cutoff$cutoff[1]] <- 1
+
+t <- table(log_pred_class, test_data$Hazardous) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+
+```
+The calculated optimal cut-off point performs worse in sensitivity and accuracy compared to a 0.5 cut-off point.
+
+Try another method:
+```{r}
+cutpoints <- seq(0.1, 0.5, by=0.05)
+
+for (i in 1: length(cutpoints)){
+  log_pred_class <- rep(0, length(log_preds))
+  log_pred_class[log_preds >= cutpoints[i]] <- 1
+  t<- table(log_pred_class, test_data$Hazardous)
+  tp <-  confusionMatrix(t, positive = "1")
+  print(paste("cutpoint =",cutpoints[i], "Sensitivity =", tp$byClass["Sensitivity"], "Accuracy =", tp$overall["Accuracy"] ))
+}
+```
+
+It seems that cut-off point of 0.25 provide better sensitivity and accuracy scores at the same time
+```{r}
+log_pred_class <- rep(0, length(log_preds))
+log_pred_class[log_preds >= 0.25] <- 1
+
+
+t <- table(log_pred_class, test_data$Hazardous) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+```
+If we use a cut-off point of 0.25 in logistic regression. The accuracy is 0.9584 and sensitivity is 0.9536 for our final logistical model.
+
+```{r}
+#install.packages("vip")
+library(vip)
+
+# Plot VI scores
+p1<- vip(log_mod_final, num_features = length(coef(log_mod_final)), 
+          geom = "col",  
+          mapping = aes_string(fill = "Sign"))
+
+p1<- p1 + theme_minimal()
+p1
+
+```
+
+# Bagging
+
+```{r}
+library(randomForest) # Load randomForest package to run bagging
+library(rpart) # Load rpart for decision trees
+library(caret) #
+```
+
+```{r Bagging}
+set.seed(258506) # Set random number generator seed for reproducability
+
+
+
+# Use random forest to do bagging
+bag_mod <- randomForest(as.factor(Hazardous) ~., # Set tree formula
+                data = train_data, # Set dataset
+                mtry = 20, # Set mtry to number of variables 
+                ntree = 2000) # Set number of trees to use
+bag_mod # View model
+
+
+bag_preds <- predict(bag_mod, test_data) # Create predictions for bagging model
+
+t <- table(bag_preds, test_data$Hazardous) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+```
+
+
+```{r plot Error}
+
+oob_error <- bag_mod$err.rate[,1] # Extract oob error
+plot_dat <- cbind.data.frame(rep(1:length(oob_error)), oob_error) # Create plot data
+names(plot_dat) <- c("trees", "oob_error") # Name plot data
+
+
+# Plot oob error
+g_1 <- ggplot(plot_dat, aes(x = trees, y = oob_error)) + # Set x as trees and y as error
+  geom_point(alpha = 0.5, color = "blue") + # Select geom point
+  geom_smooth() + # Add smoothing line
+  theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "Error Rate v Number of Trees",
+       y = "Error Rate")  # Set labels
+g_1 # Print plot
+```
+
+## Parameter Tuning
+```{r Parameter Tuning}
+trees <- c(10, 25, 50, 100, 200, 300, 500, 1000, 1500, 2000) # Create vector of possible tree sizes
+nodesize <- c(1, 2, 5, 10, 15, 20, 50, 100, 200) # Create vector of possible node sizes
+
+params <- expand.grid(trees, nodesize) # Expand grid to get data frame of parameter combinations
+names(params) <- c("trees", "nodesize") # Name parameter data frame
+res_vec <- rep(NA, nrow(params)) # Create vector to store accuracy results
+
+for(i in 1:nrow(params)){ # For each set of parameters
+  set.seed(258506)  # Set seed for reproducability
+  mod <- randomForest(as.factor(Hazardous) ~. , # Set formula
+                      data=train_data,# Set data
+                      mtry = 20, # Set number of variables
+                      importance = FALSE,  # 
+                      ntree = params$trees[i], # Set number of trees
+                      nodesize = params$nodesize[i]) # Set node size
+  res_vec[i] <- 1 - mod$err.rate[nrow(mod$err.rate),1] # Calculate out of bag accuracy
+}
+```
+
+```{r Summarize tuning}
+summary(res_vec) # Summarize accuracy results
+```
+
+```{r view param combs}
+res_db <- cbind.data.frame(params, res_vec) # Join parameters and accuracy results
+names(res_db)[3] <- "oob_accuracy" # Name accuracy results column
+res_db # Print accuracy results column
+```
+
+```{r heatmap }
+res_db$trees <- as.factor(res_db$trees) # Convert tree number to factor for plotting
+res_db$nodesize <- as.factor(res_db$nodesize) # Convert node size to factor for plotting
+
+g_bag <- ggplot(res_db, aes(y = trees, x = nodesize, fill = oob_accuracy)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$oob_accuracy), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "Number of Trees", fill = "OOB Accuracy") # Set labels
+g_bag # Generate plot
+
+res_db[which.max(res_db$oob_accuracy),] # View best set of results
+```
+
+```{r}
+set.seed(258506) # Set random number generator seed for reproducability
+
+bag_mod_final <- randomForest(as.factor(Hazardous) ~., # Set tree formula
+                data = train_data, # Set dataset
+                mtry = 20, # Set mtry to number of variables 
+                ntree = 100, # Set number of trees to use
+                nodesize = 2) # Set node size
+bag_mod_final # View model
+
+
+bag_preds <- predict(bag_mod_final, test_data) # Create predictions for bagging model
+
+t <- table(bag_preds, test_data$Hazardous) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+
+```
+The tuned model has the same accuracy (0.9957) and specificity (0.9868) compared to the first bagging model. It performs worse than the random forest model. 
+
+```{r}
+# Extract Importance
+importance_matrix <- randomForest::importance(bag_mod_final)
+# Print importance matrix
+importance_matrix
+
+varImpPlot(bag_mod_final, type =2, n.var = 10) # Plot importance
+```
+```{r}
+## Partial Dependency
+importanceOrder=order(-bag_mod_final$importance)
+names=rownames(bag_mod_final$importance)[importanceOrder][1:10]
+for (name in names)
+   partialPlot(bag_mod_final, train_data, eval(name), which.class = "1", main = paste("Partial Dependence on ",name),  xlab=name)
+```
+
+
+# Random Forest
+
+```{r}
+library(randomForest) 
+library(rpart) # Load rpart for decision trees
+library(caret) # Used for analysing results
+```
+
+## Fit the Random Forest model
+```{r}
+set.seed(12345)
+rf_mod <- randomForest(as.factor(Hazardous) ~. , # Set tree formula
+                       data = train_data, # Set dataset
+                       ntree = 1000) # Set number of trees to use
+rf_mod # View model
+
+```
+
+### Tuning the number of trees
+```{r}
+oob_error <- rf_mod$err.rate[,1] # Extract oob error
+plot_dat <- cbind.data.frame(rep(1:length(oob_error)), oob_error) # Create plot data
+names(plot_dat) <- c("trees", "oob_error") # Name plot data
+
+plot_dat[which.min(plot_dat$oob_error),] #get minimum trees needed for lowest out of bag error
+
+# Plot oob error
+ggplot(plot_dat, aes(x = trees, y = oob_error)) + # Set x as trees and y as error
+  geom_point(alpha = 0.5, color = "blue") + # Select geom point
+  theme_bw() + # Set theme
+  geom_smooth() + # Add smoothing line
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "Error Rate v Number of Trees",
+       y = "Error Rate")  # Set labels
+
+```
+
+It seems that 218 is the best number of trees.
+
+```{r}
+rf_preds <- predict(rf_mod, test_data, type = "prob") # Create predictions for random forest model
+
+# Convert predictions to classes, using 0.5
+rf_pred_class <- rep(0, nrow(rf_preds))
+rf_pred_class[rf_preds[,2] >= 0.5] <- 1
+
+t <- table(rf_pred_class, test_data$Hazardous) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+```
+
+### Tuning mtry (number of trees) and node size parameters
+```{r}
+mtry_vals <- c(2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20)
+nodesize_vals <- c(1, 2, 5, 10, 15, 20, 50, 100)
+
+params <- expand.grid(mtry_vals, nodesize_vals)
+names(params) <- c("mtry", "nodesize")
+acc_vec <- rep(NA, nrow(params))
+sens_vec <- rep(NA, nrow(params))
+
+
+for(i in 1:nrow(params)){
+  set.seed(12345)
+  rf_mod <- randomForest(as.factor(Hazardous) ~., # Set tree formula
+                         data = train_data, # Set dataset
+                         ntree = 218,
+                         nodesize = params$nodesize[i],
+                         mtry = params$mtry[i]) # Set number of trees to use
+  rf_preds <-rf_mod$predicted # Create predictions for bagging model
+
+  t <- table(rf_preds,   train_data$Hazardous) # Create table
+  c <- confusionMatrix(t, positive = "1") # Produce confusion matrix
+
+  acc_vec[i] <- c$overall[1]
+  sens_vec[i] <- c$byClass[1]
+}
+```
+
+visualize parameters
+```{r}
+res_db <- cbind.data.frame(params, acc_vec, sens_vec)
+res_db$mtry <- as.factor(res_db$mtry) # Convert tree number to factor for plotting
+res_db$nodesize <- as.factor(res_db$nodesize) # Convert node size to factor for plotting
+ggplot(res_db, aes(y = mtry, x = nodesize, fill = acc_vec)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint = mean(res_db$acc_vec), # Choose mid point
+    space = "Lab",
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "mtry", fill = "OOB Accuracy") # Set labels
+
+
+
+ggplot(res_db, aes(y = mtry, x = nodesize, fill = sens_vec)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint = mean(res_db$sens_vec), # Choose mid point
+    space = "Lab",
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "Mtry", fill = "OOB Sensitivity") # Set labels
+
+
+```
+
+```{r}
+res_db[which(res_db$nodesize == 1),]
+```
+
+It seems like the best set of parameters for this tree are mtry 6 and node size 1.
+
+
+```{r}
+set.seed(12345)
+rf_mod_final <- randomForest(as.factor(Hazardous) ~., # Set tree formula
+                         data = train_data, # Set dataset
+                         ntree = 218,
+                         nodesize = 1,
+                         mtry = 6) # Set number of trees to use
+rf_preds <- predict(rf_mod_final, test_data, type = "prob") # Create predictions for random forest model
+
+# Convert predictions to classes, using 0.5
+rf_pred_class <- rep(0, nrow(rf_preds))
+rf_pred_class[rf_preds[,2] >= 0.5] <- 1
+
+t <- table(rf_pred_class, test_data$Hazardous) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+
+```
+The tuned random forest model has the same accuracy (0.9968) and sensitivity (0.9934) as the first untuned model. 
+
+```{r}
+# Extract Importance
+importance_matrix <- randomForest::importance(rf_mod_final)
+# Print importance matrix
+importance_matrix
+
+varImpPlot(rf_mod_final, type =2, n.var = 10) # Plot importance
+
+```
+## Partial Dependency
+```{r}
+importanceOrder=order(-rf_mod_final$importance)
+names=rownames(rf_mod_final$importance)[importanceOrder][1:10]
+for (name in names)
+   partialPlot(rf_mod_final, train_data, eval(name), which.class = "1", main = paste("Partial Dependence on ",name),  xlab=name)
+```
+
+
+
+
+
+# XGboost
+
+## Fit the initial XGboost model
+```{r}
+library(xgboost)
+
+set.seed(111222)
+
+# Make the training and testing data matrix
+test_matrix <- xgb.DMatrix(data = as.matrix(test_data[,1:20]),label = as.numeric(test_data$Hazardous))
+
+training_matrix <- xgb.DMatrix(data = as.matrix(train_data[,1:20]),label = as.numeric(train_data$Hazardous))
+
+boost_model <- xgboost(data = training_matrix,
+                    nrounds = 100,
+                    verbose = 1, # 1 - Prints out fit
+                print_every_n = 20, # Prints out result every 20th iteration
+                objective = "binary:logistic", # Set objective
+               eval_metric = "auc",
+               eval_metric = "error") # Set evaluation metric to use)
+
+# Creating the confusion matrix
+boost_predict_test <- predict(boost_model, test_matrix)
+boost_predict_test_dat <- cbind.data.frame(boost_predict_test,test_data$Hazardous)
+
+boost_pred_class <- rep("0",length(boost_predict_test))
+boost_pred_class[boost_predict_test >= 0.5] <- "1"
+confusion_matrix_boost <- table(boost_pred_class, test_data$Hazardous)
+confusionMatrix(confusion_matrix_boost, positive = "1")
+```
+```{r Tune the XGBoost Code}
+set.seed(111222)
+
+# Start with the eta
+
+# Build the XGboost with eta = 0.005
+bst_tuneeta_01 <- xgb.cv(data = training_matrix,
+              nfold = 5, # Use 5 fold cross-validation
+              eta = 0.005, # Set learning rate
+              
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+            
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use)
+
+
+# Build the XGboost with eta = 0.01
+bst_tuneeta_02 <- xgb.cv(data = training_matrix,
+              nfold = 5, # Use 5 fold cross-validation
+              eta = 0.01, # Set learning rate
+             
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use)
+
+# Build the XGboost with eta = 0.05
+bst_tuneeta_03 <- xgb.cv(data = training_matrix,
+              nfold = 5, # Use 5 fold cross-validation
+              eta = 0.05, # Set learning rate
+              
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use)
+
+# Build the XGboost with eta = 0.1
+bst_tuneeta_04 <- xgb.cv(data = training_matrix,
+              nfold = 5, # Use 5 fold cross-validation
+              eta = 0.1, # Set learning rate
+              
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use)
+
+# Build the XGboost with eta = 0.3
+bst_tuneeta_05 <- xgb.cv(data = training_matrix,
+              nfold = 5, # Use 5 fold cross-validation
+              eta = 0.3, # Set learning rate
+             
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use)
+
+```
+
+```{r}
+pd1 <- cbind.data.frame(bst_tuneeta_01$evaluation_log[,c("iter", "test_error_mean")], rep(0.005, nrow(bst_tuneeta_01$evaluation_log)))
+names(pd1)[3] <- "eta"
+
+pd2 <- cbind.data.frame(bst_tuneeta_02$evaluation_log[,c("iter", "test_error_mean")], rep(0.01, nrow(bst_tuneeta_02$evaluation_log)))
+names(pd2)[3] <- "eta"
+
+pd3 <- cbind.data.frame(bst_tuneeta_03$evaluation_log[,c("iter", "test_error_mean")], rep(0.05, nrow(bst_tuneeta_03$evaluation_log)))
+names(pd3)[3] <- "eta"
+
+pd4 <- cbind.data.frame(bst_tuneeta_04$evaluation_log[,c("iter", "test_error_mean")], rep(0.1, nrow(bst_tuneeta_04$evaluation_log)))
+names(pd4)[3] <- "eta"
+
+pd5 <- cbind.data.frame(bst_tuneeta_05$evaluation_log[,c("iter", "test_error_mean")], rep(0.3, nrow(bst_tuneeta_05$evaluation_log)))
+names(pd5)[3] <- "eta"
+
+combined_plot_dta <- rbind.data.frame(pd1,pd2,pd3,pd4,pd5)
+combined_plot_dta$eta <- as.factor(combined_plot_dta$eta)
+
+combined_viz <- ggplot(data = combined_plot_dta,
+               aes(x = iter, 
+                   y = test_error_mean,
+                   color = eta)) +
+  geom_smooth(alpha = 0.5) + 
+  theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "Error Rate v Number of Trees",
+       y = "Error Rate", color = "Learning \n Rate")
+
+combined_viz
+
+# We would set the learning rate to 0.3
+```
+
+## Find optimal number of iterations
+```{r}
+# Use xgb.cv to run cross-validation inside xgboost
+set.seed(111222)
+bst <- xgb.cv(data = training_matrix, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+               eta = 0.3, # Set learning rate
+              
+               nrounds = 1000, # Set number of rounds
+               early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+               
+               verbose = 1, # 1 - Prints out fit
+               nthread = 1, # Set number of parallel threads
+               print_every_n = 20, # Prints out result every 20th iteration
+              
+               objective = "binary:logistic", # Set objective
+               eval_metric = "auc",
+               eval_metric = "error") # Set evaluation metric to use
+
+```
+
+optimal iteration is 14.
+
+```{r}
+ggplot(bst$evaluation_log, aes(x=iter, y=test_error_mean))+ 
+  geom_smooth(se=F) + 
+  theme_minimal()+ 
+  ggtitle ("Iterations vs mean test error ") +  
+  xlab("iterations")+
+  ylab("Mean test error")
+```
+
+
+```{r figure out best max depth and min child}
+# Be Careful - This can take a very long time to run
+max_depth_vals <- c(3, 5, 7, 10, 15) # Create vector of max depth values
+min_child_weight <- c(1,3,5,7, 10, 15) # Create vector of min child values
+
+# Expand grid of parameter values
+cv_params <- expand.grid(max_depth_vals, min_child_weight)
+names(cv_params) <- c("max_depth", "min_child_weight")
+# Create results vector
+auc_vec <- error_vec <- rep(NA, nrow(cv_params)) 
+# Loop through results
+for(i in 1:nrow(cv_params)){
+  set.seed(111222)
+  bst_tune <- xgb.cv(data = training_matrix, # Set training data
+              nfold = 5, # Use 5 fold cross-validation
+              eta = 0.3, # Set learning rate
+             
+              max.depth = cv_params$max_depth[i], # Set max depth
+              min_child_weight = cv_params$min_child_weight[i], # Set minimum number of samples in node to split
+              
+              nrounds = 100, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+              
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc", # Set evaluation metric to use
+              eval_metric = "error") # Set evaluation metric to use
+  
+  auc_vec[i] <- bst_tune$evaluation_log$test_auc_mean[bst_tune$best_ntreelimit]
+  error_vec[i] <- bst_tune$evaluation_log$test_error_mean[bst_tune$best_ntreelimit]
+}
+```
+
+```{r Plot the AUC and Error to decide best max depth and min child}
+# Join results in dataset
+res_db <- cbind.data.frame(cv_params, auc_vec, error_vec)
+names(res_db)[3:4] <- c("auc", "error") 
+res_db$max_depth <- as.factor(res_db$max_depth) # Convert tree number to factor for plotting
+res_db$min_child_weight <- as.factor(res_db$min_child_weight) # Convert node size to factor for plotting
+
+# Print AUC heatmap
+auc1 <- ggplot(res_db, aes(y = max_depth, x = min_child_weight, fill = auc)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$auc), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Minimum Child Weight", y = "Max Depth", fill = "AUC") # Set labels
+
+# print error heatmap
+error1 <- ggplot(res_db, aes(y = max_depth, x = min_child_weight, fill = error)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$error), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Minimum Child Weight", y = "Max Depth", fill = "Error") # Set labels
+
+auc1 # Generate plot
+error1
+```
+
+Minimum child weight = 1, max depth =5
+
+```{r for loop the best gamma}
+gamma_vals <- c(0, 0.05, 0.1, 0.15, 0.2) # Create vector of gamma values
+
+set.seed(111222)
+auc_vec <- error_vec <- rep(NA, length(gamma_vals))
+for(i in 1:length(gamma_vals)){
+  bst_tune <- xgb.cv(data = training_matrix, # Set training data
+              nfold = 5, # Use 5 fold cross-validation
+              eta = 0.3, # Set learning rate
+             
+              max.depth = 5, # Set max depth
+              min_child_weight = 1, # Set minimum number of samples in node to split
+              
+              gamma = gamma_vals[i], # Set minimum loss reduction for split
+              nrounds = 100, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc", # Set evaluation metric to use
+              eval_metric = "error") # Set evaluation metric to use
+  auc_vec[i] <- bst_tune$evaluation_log$test_auc_mean[bst_tune$best_ntreelimit]
+  error_vec[i] <- bst_tune$evaluation_log$test_error_mean[bst_tune$best_ntreelimit]
+  
+}
+
+# Check for the best gamma
+cbind.data.frame(gamma_vals, auc_vec, error_vec)
+#gamma = 0.05
+```
+
+```{r}
+subsample <- c(0.6, 0.7, 0.8, 0.9, 1) # Create vector of subsample values
+colsample_by_tree <- c(0.6, 0.7, 0.8, 0.9, 1) # Create vector of col sample values
+
+# Expand grid of tuning parameters
+cv_params <- expand.grid(subsample, colsample_by_tree)
+names(cv_params) <- c("subsample", "colsample_by_tree")
+# Create vectors to store results
+auc_vec <- error_vec <- rep(NA, nrow(cv_params)) 
+# Loop through parameter values
+for(i in 1:nrow(cv_params)){
+  set.seed(111222)
+  bst_tune <- xgb.cv(data = training_matrix, # Set training data
+              nfold = 5, # Use 5 fold cross-validation
+              eta = 0.3, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 1, # Set minimum number of samples in node to split
+              gamma = 0.05, # Set minimum loss reduction for split
+              subsample = cv_params$subsample[i], # Set proportion of training data to use in tree
+              colsample_bytree = cv_params$colsample_by_tree[i], # Set number of variables to use in each tree
+              nrounds = 100, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc", # Set evaluation metric to use
+              eval_metric = "error") # Set evaluation metric to use
+  auc_vec[i] <- bst_tune$evaluation_log$test_auc_mean[bst_tune$best_ntreelimit]
+  error_vec[i] <- bst_tune$evaluation_log$test_error_mean[bst_tune$best_ntreelimit]
+}
+```
+
+```{r visualize AUC and Error for best sub sample and colsample_by_tree}
+res_db <- cbind.data.frame(cv_params, auc_vec, error_vec)
+names(res_db)[3:4] <- c("auc", "error") 
+res_db$subsample <- as.factor(res_db$subsample) # Convert tree number to factor for plotting
+res_db$colsample_by_tree <- as.factor(res_db$colsample_by_tree) # Convert node size to factor for plotting
+auc2 <- ggplot(res_db, aes(y = colsample_by_tree, x = subsample, fill = auc)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$auc), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Subsample", y = "Column Sample by Tree", fill = "AUC") # Set labels
+
+error2 <- ggplot(res_db, aes(y = colsample_by_tree, x = subsample, fill = error)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$error), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Subsample", y = "Column Sample by Tree", fill = "Error") # Set labels
+
+auc2
+error2
+# subsample = 0.8
+# Column Sample = 0.9
+```
+
+```{r}
+#Final model construction
+set.seed(111222)
+boost_mod_fin <- xgboost(data = training_matrix, # Set training data
+              eta = 0.3, # Set learning rate
+              max.depth =  5, # Set max depth
+              min_child_weight = 1, # Set minimum number of samples in node to split
+              gamma = 0.05, # Set minimum loss reduction for split
+              subsample =  0.8, # Set proportion of training data to use in tree
+              colsample_bytree = 0.9, # Set number of variables to use in each tree
+              nrounds = 100, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+# Construct confusion matrix
+boost_mod_fin_predict_test <- predict(boost_mod_fin, test_matrix)
+bosst_mod_fin_confusion_dat <- cbind.data.frame(boost_mod_fin_predict_test, test_data$Hazardous)
+
+boost_mod_fin_conf_class <- rep("0", length(boost_mod_fin_predict_test))
+boost_mod_fin_conf_class[boost_mod_fin_predict_test >= 0.52] <- "1"
+
+boost_mod_fin_confusion_matrix <- table(boost_mod_fin_conf_class, test_data$Hazardous)
+confusionMatrix(boost_mod_fin_confusion_matrix,positive = "1")
+```
+
+If I do not include subsample and colsample_by_tree parameters, the model will be a little better as follows: 
+```{r}
+#Final Final model construction
+set.seed(111222)
+boost_mod_fin_fin <- xgboost(data = training_matrix, # Set training data
+              eta = 0.3, # Set learning rate
+              max.depth =  5, # Set max depth
+              min_child_weight = 1, # Set minimum number of samples in node to split
+              gamma = 0.05, # Set minimum loss reduction for split
+             
+              nrounds = 100, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              objective = "binary:logistic", # Set objective
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+# Construct confusion matrix
+boost_mod_fin_fin_predict_test <- predict(boost_mod_fin_fin, test_matrix)
+bosst_mod_fin_fin_confusion_dat <- cbind.data.frame(boost_mod_fin_fin_predict_test, test_data$Hazardous)
+
+boost_mod_fin_fin_conf_class <- rep("0", length(boost_mod_fin_fin_predict_test))
+boost_mod_fin_fin_conf_class[boost_mod_fin_fin_predict_test >= 0.52] <- "1"
+
+boost_mod_fin_fin_confusion_matrix <- table(boost_mod_fin_fin_conf_class, test_data$Hazardous)
+confusionMatrix(boost_mod_fin_fin_confusion_matrix,positive = "1")
+
+
+
+```
+```{r}
+# Extract importance
+imp_mat <- xgb.importance(model = boost_mod_fin_fin)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat, top_n = 10)
+```  
+```{r}
+test_data$rf_pred <- rf_pred_class
+test_data$bst_pred <- boost_mod_fin_fin_conf_class
+head(test_data)
+
+
+#find the ID of asteroids with the same set.seed to split the data
+ set.seed(123456) # Set seed
+# Perform stratified sampling
+ split_dat2 <- stratified(mydata, group = "Hazardous", size = 0.2, bothSets = TRUE )
+ # Extract train data
+ train_db <- split_dat2[[2]]
+ # Extract test data
+ test_db <- split_dat2[[1]]
+
+
+nrow(train_db)
+nrow(test_db)
+
+table(test_db$Hazardous)
+table(test_data$Hazardous)
+
+test_data$Neo_Reference_ID <- test_db$Neo_Reference_ID
+test_data %>% 
+  filter(Hazardous != rf_pred | Hazardous != boost_mod_fin_fin_conf_class)
+
+```
+
+# Compare models
+```{r}
+library(pROC)
+# Calculate random forest model ROC
+roc1 = roc(test_data$Hazardous, rf_preds[,2] )
+
+bag_preds <- predict(bag_mod_final, test_data, type="prob")
+roc2 = roc(test_data$Hazardous, bag_preds[,2])
+
+roc3 = roc(test_data$Hazardous, boost_mod_fin_fin_predict_test)
+
+
+
+
+# Print random forest model AUC
+plot.roc(roc1, print.auc = TRUE, col = "red", print.auc.col = "red")
+# Print bagging model model AUC
+plot.roc(roc2, print.auc = TRUE, print.auc.x = 0.2, print.auc.y = 0.4, col ="blue", print.auc.col = "blue", add = TRUE)
+# Print XGboost model model AUC
+plot.roc(roc3, print.auc = TRUE, print.auc.x = 0, print.auc.y = 0.6, col ="green", print.auc.col = "green", add = TRUE)
+```
+
+
+
+
+# K Means Cluster
+```{r}
+library(tidyr)
+library(cluster)
+library(factoextra) # clustering algorithms & visualization
+library(sparcl)
+```
+
+```{r}
+# Scale all data
+scaled_nasa <- scale(mydata[,2:21])
+# Add asteroids ID back to data frame
+scaled_nasa <- cbind.data.frame(mydata$Neo_Reference_ID, scaled_nasa)
+scaled_nasa$Hazardous <- mydata$Hazardous
+# Fix name of team column
+names(scaled_nasa)[1] <- "Neo_Reference_ID" 
+```
+
+```{r}
+set.seed(12345) # Set seed for reproducibility
+fit_1 <- kmeans(x = scaled_nasa[,2:21], # Set data as explantory variables 
+                centers = 4,  # Set number of clusters
+                nstart = 25, # Set number of starts
+                iter.max = 100 ) # Set maximum number of iterations to use
+```
+
+```{r}
+# Extract clusters
+clusters_1 <- fit_1$cluster
+# Extract centers
+centers_1 <- fit_1$centers
+```
+
+```{r}
+summary(as.factor(clusters_1))
+```
+
+```{r}
+# Create vector of clusters
+cluster <- c(1: 4)
+# Extract centers
+center_df <- data.frame(cluster, centers_1)
+
+scaled_nasa$clusters_1 <- fit_1$cluster
+
+propHaz <- scaled_nasa %>% 
+  select(Hazardous, clusters_1) %>%
+  group_by(clusters_1) %>%
+  mutate(mean=mean(Hazardous)) 
+
+temp <- unique(propHaz[,2:3])
+
+temp <- temp[order(temp$clusters_1, decreasing = FALSE),]
+#add the mean of Hazardous to the df 
+center_df$Hazardous <- temp$mean
+# Reshape the data
+
+center_reshape <- gather(center_df, features, values, 
+                         Absolute_Magnitude:Hazardous)
+
+center_reshape
+```
+
+```{r}
+g_heat_1 <- ggplot(data = center_reshape, aes(x = features, y = cluster, fill = values)) +
+  scale_y_continuous(breaks = seq(1, 4, by = 1)) +
+  geom_tile() +
+  coord_equal() + 
+  theme_set(theme_bw(base_size =10) ) +
+  scale_fill_gradient2(low = "blue", # Choose low color
+                       mid = "white", # Choose mid color
+                       high = "red", # Choose high color
+                       midpoint =0, # Choose mid point
+                       space = "Lab", 
+                       na.value ="grey", # Choose NA value
+                       guide = "colourbar", # Set color bar
+                       aesthetics = "fill") + # Select aesthetics to apply
+  coord_flip()
+```
+```{r, fig.width=10}
+g_heat_1
+```
+```{r}
+# Create function to try different cluster numbers
+kmean_withinss <- function(k) {
+  cluster <- kmeans( x = scaled_nasa[,2:21],  # Set data to use
+                    centers = k,  # Set number of clusters as k, changes with input into function
+                    nstart = 25, # Set number of starts
+                    iter.max = 100) # Set max number of iterations
+  return (cluster$tot.withinss) # Return cluster error/within cluster sum of squares
+}
+
+
+# Set maximum cluster number
+max_k <-20
+# Run algorithm over a range of cluster numbers 
+wss <- sapply(2:max_k, kmean_withinss)
+
+
+# Create a data frame to plot the graph
+elbow <-data.frame(2:max_k, wss)
+
+# Plot the graph with gglop
+g_1 <- ggplot(elbow, aes(x = X2.max_k, y = wss)) +
+  theme_set(theme_bw(base_size = 22) ) +
+  geom_point(color = "blue") +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1, 20, by = 1)) +
+  labs(x = "Number of Clusters", y="Within Cluster \nSum of Squares") +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) 
+g_1
+```
+
+12 may be a good choice for centers based on the elbow plot.
+```{r}
+set.seed(12345) # Set seed for reproducibility
+fit_2 <- kmeans(x = scaled_nasa[,2:21], # Set data as explantory variables 
+                centers = 12,  # Set number of clusters
+                nstart = 25, # Set number of starts
+                iter.max = 100 ) # Set maximum number of iterations to use
+```
+
+```{r}
+# Extract clusters
+clusters_2 <- fit_2$cluster
+# Extract centers
+centers_2 <- fit_2$centers
+
+summary(as.factor(clusters_2))
+```
+```{r}
+#check the single special case in cluster 4
+scaled_nasa$Neo_Reference_ID[clusters_2 == 4]
+```
+```{r}
+scaled_nasa[clusters_2==4,]
+#it is a super large asteroid clustering by itself
+mydata[Neo_Reference_ID ==2000433,]
+
+
+```
+```{r}
+# Drop small cluster samples
+scaled_nasa2 <- scaled_nasa[!scaled_nasa$Neo_Reference_ID ==2000433,]
+
+set.seed(12345) # Set seed for reproducibility
+fit_3 <- kmeans(x = scaled_nasa2[,2:21], # Set data as explantory variables 
+                centers = 11,  # Set number of clusters
+                nstart = 25, # Set number of starts
+                iter.max = 100 ) # Set maximum number of iterations to use
+```
+
+```{r}
+# Extract clusters
+clusters_3 <- fit_3$cluster
+# Extract centers
+centers_3 <- fit_3$centers
+
+summary(as.factor(clusters_3))
+```
+
+```{r}
+# Create vector of clusters
+cluster <- c(1: 11)
+# Extract centers
+center_df2 <- data.frame(cluster, centers_3)
+
+scaled_nasa2$clusters_3 <- fit_3$cluster
+
+propHaz <- scaled_nasa2 %>% 
+  select(Hazardous, clusters_3) %>%
+  group_by(clusters_3) %>%
+  mutate(mean=mean(Hazardous)) 
+
+temp <- unique(propHaz[,2:3])
+
+temp <- temp[order(temp$clusters_3, decreasing = FALSE),]
+#add the mean of Hazardous to the df 
+center_df2$Hazardous <- temp$mean
+# Reshape the data
+
+center_reshape2 <- gather(center_df2, features, values, 
+                         Absolute_Magnitude:Hazardous)
+
+center_reshape2
+```
+
+```{r}
+g_heat_2 <- ggplot(data = center_reshape2, aes(x = features, y = cluster, fill = values)) +
+  scale_y_continuous(breaks = seq(1, 11, by = 1)) +
+  geom_tile() +
+  coord_equal() + 
+  theme_set(theme_bw(base_size = 10) ) +
+  scale_fill_gradient2(low = "blue", # Choose low color
+                       mid = "white", # Choose mid color
+                       high = "red", # Choose high color
+                       midpoint =0, # Choose mid point
+                       space = "Lab", 
+                       na.value ="grey", # Choose NA value
+                       guide = "colourbar", # Set color bar
+                       aesthetics = "fill") + # Select aesthetics to apply
+  coord_flip()
+```
+```{r, fig.width=12, fig.height=8}
+g_heat_2
+```
+
+
+## Silouette plots
+```{r, fig.width=10, fig.height=12}
+dis = dist(scaled_nasa[2:21])^2
+op <- par(mfrow= c(1,1), oma= c(0,0,1, 0),
+          mgp= c(1,.8,0), mar= .1+c(4,2,2,2))
+sil = silhouette (fit_1$cluster , dis, full = TRUE)
+
+plot(sil, nmax = 217, cex.names= 0.6, border=NA)
+
+```
+
+```{r, fig.width=10, fig.height=12}
+dis = dist(scaled_nasa2[2:21])^2
+op <- par(mfrow= c(1,1), oma= c(0,0,1, 0),
+          mgp= c(1,.8,0), mar= .1+c(4,2,2,2))
+sil = silhouette (fit_3$cluster , dis, full = TRUE)
+
+plot(sil, nmax = 217, cex.names= 0.6, border=NA)
+
+```
+
+```{r}
+plot_clust_cardinality <- cbind.data.frame(clusters_1[-1], clusters_3) # Join clusters with  k=4 and k=12
+names(plot_clust_cardinality) <- c("k_4", "k_11") # Set names
+# Create bar plots
+g_2 <- ggplot(plot_clust_cardinality, aes( x = factor(k_4))) + # Set x as cluster values
+  geom_bar(stat = "count", fill = "steelblue") + # Use geom_bar with stat = "count" to count observations
+    labs(x = "Cluster Number", y="Points in Cluster", # Set labels
+         title = "Cluster Cardinality (k = 4)") +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) 
+
+
+g_3 <- ggplot(plot_clust_cardinality, aes( x = factor(k_11))) + # Set x as cluster values
+  geom_bar(stat = "count", fill = "steelblue") + # Use geom_bar with stat = "count" to count observations
+    labs(x = "Cluster Number", y="Points in Cluster", # Set labels
+         title = "Cluster Cardinality (k = 11)") +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) 
+g_2
+```
+```{r}
+g_3
+```
+
+```{r}
+k_4_mag <- cbind.data.frame(c(1:4), fit_1$withinss) # Extract within cluster sum of squares
+names(k_4_mag) <- c("cluster", "withinss") # Fix names for plot data
+g_4 <- ggplot(k_4_mag, aes(x = cluster, y = withinss)) + # Set x as cluster, y as withinss
+  geom_bar(stat = "identity", fill = "steelblue") + # Use geom bar and stat = "identity" to plot values directly
+   labs(x = "Cluster Number", y="Total Point to Centroid Distance", # Set labels
+         title = "Cluster Magnitude (k = 4)") +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) 
+  
+k_11_mag <- cbind.data.frame(c(1:11), fit_3$withinss) # Extract within cluster sum of squares
+names(k_11_mag) <- c("cluster", "withinss") # Fix names for plot data
+g_5 <- ggplot(k_11_mag, aes(x = cluster, y = withinss)) +  # Set x as cluster, y as withinss
+  geom_bar(stat = "identity", fill = "steelblue") + # Use geom bar and stat = "identity" to plot values directly
+   labs(x = "Cluster Number", y="Total Point to Centroid Distance", # Set labels
+         title = "Cluster Magnitude (k = 11)") +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) 
+
+
+g_4
+```
+```{r}
+g_5
+```
+```{r}
+k_4_dat <- cbind.data.frame(table(clusters_1), k_4_mag[,2]) # Join magnitude and cardinality
+names(k_4_dat) <- c("cluster", "cardinality", "magnitude") # Fix plot data names
+
+g_6 <- ggplot(k_4_dat, aes(x = cardinality, y = magnitude, color = cluster)) + # Set aesthetics
+  geom_point(alpha = 0.8, size  = 4) +  # Set geom point for scatter
+ geom_smooth(aes(x = cardinality, y = magnitude), method = "lm",
+              se = FALSE, inherit.aes = FALSE, alpha = 0.5) + # Set trend  line
+  labs(x = "Cluster Cardinality", y="Total Point to Centroid Distance", # Set labels
+         title = "Cluster Magnitude vs Cardinality \n(k = 4)") +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) 
+
+
+k_11_dat <- cbind.data.frame(table(clusters_3), k_11_mag[,2]) # Join magnitude and cardinality
+names(k_11_dat) <- c("cluster", "cardinality", "magnitude") # Fix plot data names
+
+g_7 <- ggplot(k_11_dat, aes(x = cardinality, y = magnitude, color = cluster)) + # Set aesthetics
+  geom_point(alpha = 0.8, size = 4) +  # Set geom point for scatter
+  geom_smooth(aes(x = cardinality, y = magnitude), method = "lm",
+              se = FALSE, inherit.aes = FALSE, alpha = 0.5) + # Set trend  line
+  labs(x = "Cluster Cardinality", y="Total Point to Centroid Distance", # Set labels
+         title = "Cluster Magnitude vs Cardinality \n(k = 11)") +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) 
+
+
+g_6
+```
+```{r}
+g_7
+```
+
+
+```{r}
+# Create function to try different cluster numbers
+kmean_withinss2 <- function(k) {
+  cluster <- kmeans( x = scaled_nasa[,2:21],  # Set data to use
+                    centers = k,  # Set number of clusters as k, changes with input into function
+                    nstart = 25, # Set number of starts
+                    iter.max = 100) # Set max number of iterations
+  return (cluster$tot.withinss) # Return cluster error/within cluster sum of squares
+}
+```
+
+
+```{r}
+# Set maximum cluster number
+max_k <- 20
+# Run algorithm over a range of cluster numbers 
+wss2 <- sapply(2:max_k, kmean_withinss2)
+
+
+# Create a data frame to plot the graph
+elbow <-data.frame(2:max_k, wss2)
+```
+
+```{r}
+# Plot the graph with ggplot
+g_8 <- ggplot(elbow, aes(x = X2.max_k, y = wss2)) +
+  theme_set(theme_bw(base_size = 22) ) +
+  geom_point(color = "blue") +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1, 20, by = 1)) +
+  labs(x = "Number of Clusters", y="Within Cluster \nSum of Squares") +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) 
+g_8
+```
+
+```{r}
+# Create silhouette plot
+fviz_nbclust(scaled_nasa2[,2:21], kmeans, method = "silhouette")
+```
+
+From the silhouette plot we see that the optimal number of clusters is 2, though 4 and 9 may be alternate choices.
+
+To calculate the gap statistic we run the following:
+
+```{r}
+# compute gap statistic
+# set.seed(12345)
+# 
+# gap_stat <- clusGap(scaled_nasa2[,2:21], FUN = kmeans, nstart = 25,
+#                     K.max = 20, B = 100)
+#does not converge
+# Print the result
+# print(gap_stat, method = "firstmax")
+```
+
+```{r}
+set.seed(12345) # Set seed for reproducibility
+fit_4 <- kmeans(x = scaled_nasa2[2:21], # Set data as explantory variables 
+                centers = 2,  # Set number of clusters
+                nstart = 25, # Set number of starts
+                iter.max = 100 ) # Set maximum number of iterations to use
+
+# Extract clusters
+clusters_4 <- fit_4$cluster
+# Extract centers
+centers_4 <- fit_4$centers
+
+# Check samples per cluster
+summary(as.factor(clusters_4))
+
+```
+
+
+
+```{r}
+cluster <- c(1:2)
+center_df3 <- data.frame(cluster, centers_4)
+
+scaled_nasa2$clusters_4 <- fit_4$cluster
+
+propHaz <- scaled_nasa2 %>% 
+  select(Hazardous, clusters_4) %>%
+  group_by(clusters_4) %>%
+  mutate(mean=mean(Hazardous)) 
+
+temp <- unique(propHaz[,2:3])
+
+temp <- temp[order(temp$clusters_4, decreasing = FALSE),]
+#add the mean of Hazardous to the df 
+center_df3$Hazardous <- temp$mean
+
+
+# Reshape the data
+
+center_reshape3 <- gather(center_df3, features, values, Absolute_Magnitude:Hazardous)
+center_reshape3
+```
+```{r}
+g_heat_3 <- ggplot(data = center_reshape3, aes(x = features, y = cluster, fill = values)) +
+  scale_y_continuous(breaks = seq(1, 2, by = 1)) +
+  geom_tile() +
+  coord_equal() + 
+  theme_bw() +
+  scale_fill_gradient2(low = "blue", # Choose low color
+                       mid = "white", # Choose mid color
+                       high = "red", # Choose high color
+                       midpoint =0, # Choose mid point
+                       space = "Lab", 
+                       na.value ="grey", # Choose NA value
+                       guide = "colourbar", # Set color bar
+                       aesthetics = "fill") + # Select aesthetics to apply
+  coord_flip()
+```
+```{r}
+g_heat_3
+```
+```{r}
+km.perm <- KMeansSparseCluster.permute(x = scaled_nasa2[2:21], # Set data
+                                       K=2, # Set cluster number
+                                       nperms=5)
+```
+
+```{r}
+print(km.perm)
+```
+```{r}
+plot(km.perm)
+
+```
+```{r}
+km.sparse <- KMeansSparseCluster(x = scaled_nasa2[2:21], # Set data
+                                 K=2, # Set cluster number
+                                 wbounds =  2.35, # Set tuning parameter
+                                 nstart = 25, # Set number of starts
+                                 maxiter=100) # Set number of iterations
+```
+```{r}
+clusters_5 <- km.sparse[[1]]$Cs
+
+
+  
+centers_5 <- km.sparse[[1]]$ws
+```
+```{r}
+sort(centers_5, decreasing = T)
+
+
+```
+
+## Key variables for separating the data:
+
+* Semi_Major_Axis               
+* Aphelion_Dist              
+* Orbital_Period 
+* Jupiter_Tisserand_Invariant 
+* Mean_Motion                
+* Eccentricity
