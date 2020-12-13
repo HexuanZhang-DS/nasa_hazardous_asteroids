@@ -60,9 +60,9 @@ names(nasa)<- gsub("\\s","_",names(nasa))
 nasa<- as.data.frame(nasa)
 checkvars <- c('Orbiting_Body','Equinox', 'Orbit_ID', 'Close_Approach_Date', 'Epoch_Date_Close_Approach','Orbit_Determination_Date')
 
-head(nasa[checkvars], 50)
-table(nasa$Orbiting_Body)
-table(nasa$Equinox)
+#head(nasa[checkvars], 10)
+#table(nasa$Orbiting_Body)
+#table(nasa$Equinox)
 
 ```
 ```{r}
@@ -119,8 +119,8 @@ mydata <- mydata %>%
 library(PerformanceAnalytics)
 chart.Correlation(mydata[,2:ncol(mydata)], histogram = TRUE,  method = c("pearson"))
 
-summary(mydata)
-psych::describe(mydata)
+# summary(mydata)
+# psych::describe(mydata)
 
 ```
 
@@ -235,7 +235,7 @@ library(splitstackshape) # Used for stratified sampling
 nrow(train_data)
 nrow(test_data)
 
-summary(train_data)
+# summary(train_data)
 table(train_data$Hazardous)
 table(test_data$Hazardous)
 ```
@@ -298,6 +298,7 @@ cv.lasso <- cv.glmnet(x = x_vars, # Set x variables
 best_lam <- cv.lasso$lambda.min # Extract best lambda
 best_lam  # Print best lambda TOO SMALL
 ```
+
 ## Use the best lambda for lasso fit
 ```{r}
 lasso_fit2 <- glmnet(x = x_vars, # Set explantory variables
@@ -465,8 +466,8 @@ confusionMatrix(t, positive = "1") # Produce confusion matrix
 ```
 
 
-```{r plot Error}
 
+```{r plot Error}
 oob_error <- bag_mod$err.rate[,1] # Extract oob error
 plot_dat <- cbind.data.frame(rep(1:length(oob_error)), oob_error) # Create plot data
 names(plot_dat) <- c("trees", "oob_error") # Name plot data
