@@ -5,7 +5,7 @@ output:
     variant: markdown_github
 ---
 
-![Asteroids comparison](image/Asteroid_Comparison_metaball_Featured.jpg){width=100%}
+![Asteroids comparison](image/asteroids.jpg){width=100%}
 Asteroids Comparison Metaball Featured (sourse: https://warpgatenews.com/metaballstudios-asteroid-comparison-video/)
 
 

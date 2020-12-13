@@ -1,4 +1,4 @@
-<img src="image/Asteroid_Comparison_metaball_Featured.jpg" style="width:100.0%" alt="Asteroids comparison" />
+<img src="image/asteroids.jpg" style="width:100.0%" alt="Asteroids comparison" />
 Asteroids Comparison Metaball Featured (sourse:
 <a href="https://warpgatenews.com/metaballstudios-asteroid-comparison-video/" class="uri">https://warpgatenews.com/metaballstudios-asteroid-comparison-video/</a>)
 
