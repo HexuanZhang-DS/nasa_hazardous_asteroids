@@ -2,8 +2,7 @@
 Asteroids Comparison Metaball Featured (sourse:
 <a href="https://warpgatenews.com/metaballstudios-asteroid-comparison-video/" class="uri">https://warpgatenews.com/metaballstudios-asteroid-comparison-video/</a>)
 
-NASA Hazardous Asteroids Prediction
-===================================
+
 
 Introduction
 ============
